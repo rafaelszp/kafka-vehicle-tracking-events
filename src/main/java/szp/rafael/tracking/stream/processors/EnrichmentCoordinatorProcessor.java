@@ -1,6 +1,5 @@
 package szp.rafael.tracking.stream.processors;
 
-import com.github.f4b6a3.ulid.UlidCreator;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import org.apache.kafka.streams.processor.PunctuationType;
@@ -25,6 +24,7 @@ import szp.rafael.tracking.model.tracking.TrackingEvent;
 import szp.rafael.tracking.stream.serializers.GsonSerde;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -33,7 +33,7 @@ import java.util.concurrent.ExecutorService;
 public class EnrichmentCoordinatorProcessor implements Processor<String, TrackingEvent, String, EnrichedTrackingEvent> {
 
 
-    private static final Logger log = Logger.getLogger(EnrichmentCoordinatorProcessor.class.getName());
+    private static final Logger logger = Logger.getLogger(EnrichmentCoordinatorProcessor.class.getName());
 
     // CONFIGURÁVEIS
     private final int MAX_ATTEMPTS;
@@ -95,7 +95,7 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
         // schedule punctuator
         this.context.schedule(punctuateInterval, PunctuationType.WALL_CLOCK_TIME, this::punctuate);
 
-        log.info("EnrichmentCoordinatorProcessor initialized. Punctuate interval: " + punctuateInterval);
+        logger.info("EnrichmentCoordinatorProcessor initialized. Punctuate interval: " + punctuateInterval);
     }
 
     @Override
@@ -151,7 +151,7 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
             // 2) scan pendingStore e despachar tarefas prontas
             dispatchPendingTasks();
         } catch (Exception ex) {
-            log.error("Erro no punctuate: " + ex.getMessage(), ex);
+            logger.error("Erro no punctuate: " + ex.getMessage(), ex);
         }
     }
 
@@ -266,10 +266,15 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
         } else {
             // schedule retry with exponential backoff
             int base = pending.getAttempts() - 1;
-            long backoff = Math.max(BASE_BACKOFF_MS * (1L <<  Math.max(base, 0)),60_000); // 1,2,4 * base
+            long backoff = calculateBackoff(BASE_BACKOFF_MS,base); // 1,2,4 * base
             pending.setNextRetryAtMillis(System.currentTimeMillis() + backoff);
+            logger.infof("%s | Next retry at %s | Backoff: %s" , pending.getStage(), Instant.ofEpochMilli(pending.getNextRetryAtMillis()),backoff);
             pendingStore.put(pendingKey, pending);
         }
+    }
+
+    public static long calculateBackoff(long baseBackoff, int attempts) {
+        return Math.min(baseBackoff * (1L << Math.max(attempts, 0)), 60_000);
     }
 
     /**
@@ -357,7 +362,7 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
         try {
             return gson.fromJson(new String(bytes), TrackingEvent.class);
         } catch (JsonSyntaxException ex) {
-            log.warn("Erro ao desserializar TrackingEvent: " + ex.getMessage());
+            logger.warn("Erro ao desserializar TrackingEvent: " + ex.getMessage());
             return null;
         }
     }

@@ -13,10 +13,12 @@ import org.eclipse.microprofile.context.ManagedExecutor;
 import org.jboss.logging.Logger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import szp.rafael.tracking.client.impl.FakeAlertClient;
 import szp.rafael.tracking.helpers.AppKafkaConfig;
 import szp.rafael.tracking.model.tracking.EnrichedTrackingEvent;
 import szp.rafael.tracking.model.tracking.TrackingEvent;
 import szp.rafael.tracking.stream.TopologyProducer;
+import szp.rafael.tracking.stream.processors.EnrichmentCoordinatorProcessor;
 import szp.rafael.tracking.stream.serializers.GsonSerde;
 
 import java.time.Duration;
@@ -63,7 +65,7 @@ public class MainAppTest {
         streamProps.put("auto.offset.reset", "earliest");
         streamProps.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         streamProps.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
-        streamProps.put(StreamsConfig.STATE_DIR_CONFIG, "/tmp/kafka-streams-"+this.getClass().getPackageName()+"-"+this.getClass().getSimpleName()+"/"+UUID.randomUUID());
+        streamProps.put(StreamsConfig.STATE_DIR_CONFIG, "/tmp/kafka-streams-"+this.getClass().getPackageName()+"-"+this.getClass().getSimpleName()+"/"+UlidCreator.getMonotonicUlid().toLowerCase());
 
         events = getOutOfOrderEvents();
 
@@ -81,7 +83,7 @@ public class MainAppTest {
             event.setEventId(UlidCreator.getMonotonicUlid().toLowerCase());
             event.setTraceId(UUID.randomUUID().toString());
             if(i==4){
-                event.setTraceId("error_sim");
+                event.setTraceId(FakeAlertClient.SIM_ALERT_VALUE);
                 event.setEventTime(1000000000);
             }
             if(random.nextBoolean()) {
@@ -121,7 +123,9 @@ public class MainAppTest {
             List<EnrichedTrackingEvent> enrichedList = outputTopic.readValuesToList();
 
             logger.info("Enriched events: "+enrichedList.size());
-            enrichedList.forEach(e -> logger.info(e.toJSONString()));
+            enrichedList.forEach(e -> logger.debug(e.toJSONString()));
+
+
 
 
         }
@@ -131,11 +135,12 @@ public class MainAppTest {
         try {
             Duration advance = Duration.of(60_001, ChronoUnit.SECONDS);
             testDriver.advanceWallClockTime(advance);
-            for(int i=0; i<events.size()+config.maxAttempts(); i++){
+            for(int i=0; i<events.size()+1; i++){
                 logger.debugf("waiting event %s",i);
-                boolean b = executor.awaitTermination(50, TimeUnit.MILLISECONDS);
+                boolean b = executor.awaitTermination(EnrichmentCoordinatorProcessor.calculateBackoff(config.backoffMs(),config.maxAttempts())+config.puntuateIntervalMs(), TimeUnit.MILLISECONDS);
                 testDriver.advanceWallClockTime(advance);
                 logger.debugf("Done waiting event %s: timed out: %s",i,(!b)+"");
+
             }
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
