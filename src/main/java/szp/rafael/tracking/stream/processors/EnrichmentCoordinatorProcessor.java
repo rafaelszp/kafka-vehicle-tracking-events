@@ -1,5 +1,6 @@
 package szp.rafael.tracking.stream.processors;
 
+import com.github.f4b6a3.ulid.UlidCreator;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import org.apache.kafka.streams.processor.PunctuationType;
@@ -129,7 +130,7 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
             pending = new PendingEntry();
             pending.setOriginalEvent(serializeEvent(event));
             pending.setStage(isRouteMissing(rcv) ? PendingEntry.Stage.ROUTE_ENRICH : PendingEntry.Stage.ALERT_ENRICH);
-            pending.setAttempts(0);
+            pending.setAttempts(1);
             pending.setNextRetryAtMillis(System.currentTimeMillis()); // pronto para ser executado imediatamente pelo punctuator
             pending.setTraceId(event.getTraceId());
             pending.setCreatedAtMillis(System.currentTimeMillis());
@@ -195,11 +196,13 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
         if (result.getStage() == PendingEntry.Stage.ROUTE_ENRICH) {
             if (result.isSuccess()) {
                 // grava route cache
-                routeCacheStore.put(cacheKey(originalEvent.getPlaca(), originalEvent.getEventTime()), result.getRouteValue());
+                RouteCacheValue routeValue = result.getRouteValue();
+                routeValue.setAttempts(pending.getAttempts());
+                routeCacheStore.put(cacheKey(originalEvent.getPlaca(), originalEvent.getEventTime()), routeValue);
                 // avançar para ALERT_ENRICH
                 pending.setStage(PendingEntry.Stage.ALERT_ENRICH); //proxima etapa do enriquecimento
-                pending.setAttempts(0);
                 pending.setNextRetryAtMillis(System.currentTimeMillis());
+                pending.setAttempts(1);
                 pendingStore.put(pendingKey, pending);
             } else {
                 // falha: incrementar tentativas e decidir
@@ -208,12 +211,14 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
         } else { // ALERT_ENRICH
             if (result.isSuccess()) {
                 // grava alert cache
-                alertCacheStore.put(cacheKey(originalEvent.getPlaca(), originalEvent.getEventTime()), result.getAlertValue());
+                AlertCacheValue alertValue = result.getAlertValue();
+                alertValue.setAttempts(pending.getAttempts());
+                alertCacheStore.put(cacheKey(originalEvent.getPlaca(), originalEvent.getEventTime()), alertValue);
                 // finaliza: criar enriched e colocar no buffer de ordenação
                 EnrichedTrackingEvent enriched = EnrichedTrackingEvent.from(
                         originalEvent,
                         routeCacheStore.get(cacheKey(originalEvent.getPlaca(), originalEvent.getEventTime())),
-                        result.getAlertValue());
+                        alertValue);
                 forwardAfterEnrich(originalEvent.getPlaca(), enriched);
                 pendingStore.delete(pendingKey);
             } else {
@@ -227,9 +232,9 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
      * baseado no tempo de espera (exponencial) e número de tentativas.
      * */
     private void handleFailureInStreamThread(PendingEntry pending, String pendingKey, String error) {
+        pending.setLastError(error + " | Attempts: "+ pending.getAttempts());
         pending.setAttempts(pending.getAttempts() + 1);
-        pending.setLastError(error);
-        if (pending.getAttempts() >= MAX_ATTEMPTS) {
+        if (pending.getAttempts() >= MAX_ATTEMPTS) { //valores padrao caso estoure o limite de tentativas
             // permanent failure
             TrackingEvent originalEvent = deserializeEvent(pending.getOriginalEvent());
             /*Uma possível melhoria seria chamar os 2 serviços ao mesmo tempo, mas para fins de simplicidade vamos
@@ -240,6 +245,7 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
             if (pending.getStage() == PendingEntry.Stage.ALERT_ENRICH) {
                 // set default NONE with error flag in alert cache and finish
                 AlertCacheValue defaultAlert = AlertCacheValue.defaultNoneWithError(error);
+                defaultAlert.setAttempts(pending.getAttempts());
                 alertCacheStore.put(cacheKey(originalEvent.getPlaca(), originalEvent.getEventTime()), defaultAlert);
 
                 RouteCacheValue routeVal = routeCacheStore.get(cacheKey(originalEvent.getPlaca(), originalEvent.getEventTime()));
@@ -253,13 +259,14 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
 
                 // advance to alert stage and reset attempts to 0
                 pending.setStage(PendingEntry.Stage.ALERT_ENRICH);
-                pending.setAttempts(0);
+                pending.setAttempts(1);
                 pending.setNextRetryAtMillis(System.currentTimeMillis());
                 pendingStore.put(pendingKey, pending);
             }
         } else {
             // schedule retry with exponential backoff
-            long backoff = BASE_BACKOFF_MS * (1L << (pending.getAttempts() - 1)); // 1,2,4 * base
+            int base = pending.getAttempts() - 1;
+            long backoff = Math.max(BASE_BACKOFF_MS * (1L <<  Math.max(base, 0)),60_000); // 1,2,4 * base
             pending.setNextRetryAtMillis(System.currentTimeMillis() + backoff);
             pendingStore.put(pendingKey, pending);
         }
@@ -306,16 +313,16 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
                     try {
                         if (stage == PendingEntry.Stage.ROUTE_ENRICH) {
                             ApiResponse<RouteCacheValue> resp = routeClient.fetchRoute(eventSnapshot, traceId, httpTimeout);
-                            CompletedResult cr = CompletedResult.forRoute(key, resp.isSuccess(), resp.getValue(), resp.getError());
+                            CompletedResult cr = CompletedResult.forRoute(key, resp.isSuccess(), resp.getValue(), resp.getError(),pe.getAttempts());
                             completedResponses.add(cr);
                         } else {
                             ApiResponse<AlertCacheValue> resp = alertClient.fetchAlert(eventSnapshot, traceId, httpTimeout);
-                            CompletedResult cr = CompletedResult.forAlert(key, resp.isSuccess(), resp.getValue(), resp.getError());
+                            CompletedResult cr = CompletedResult.forAlert(key, resp.isSuccess(), resp.getValue(), resp.getError(),pe.getAttempts());
                             completedResponses.add(cr);
                         }
                     } catch (Exception ex) {
                         // executor thread: capture exception and enqueue as failure
-                        CompletedResult cr = CompletedResult.forFailure(key, stage, ex.getMessage());
+                        CompletedResult cr = CompletedResult.forFailure(key, stage, ex.getMessage(),pe.getAttempts());
                         completedResponses.add(cr);
                     }
                 });

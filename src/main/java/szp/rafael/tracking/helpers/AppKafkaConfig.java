@@ -23,4 +23,16 @@ public interface AppKafkaConfig {
 
     @WithName("sink_topic")
     String sinkTopic();
+
+    @WithName("backoff_ms")
+    Long backoffMs();
+
+    @WithName("puntuate_interval_ms")
+    Long puntuateIntervalMs();
+
+    @WithName("http_timeout_ms")
+    Long httpTimeoutMs();
+
+    @WithName("max_attempts")
+    Integer maxAttempts();
 }

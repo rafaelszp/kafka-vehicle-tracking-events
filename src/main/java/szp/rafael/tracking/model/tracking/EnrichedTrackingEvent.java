@@ -21,8 +21,8 @@ public class EnrichedTrackingEvent extends AbstractModel implements Serializable
         et.original = original;
         et.route = route;
         et.alert = alert;
-        et.attemptsRoute = 0;
-        et.attemptsAlert = 0;
+        et.attemptsRoute = route.getAttempts();
+        et.attemptsAlert = alert.getAttempts();
         et.lastErrorRoute = null;
         et.lastErrorAlert = null;
         et.processedAtMillis = System.currentTimeMillis();

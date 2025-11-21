@@ -80,6 +80,10 @@ public class MainAppTest {
             TrackingEvent event = new TrackingEvent();
             event.setEventId(UlidCreator.getMonotonicUlid().toLowerCase());
             event.setTraceId(UUID.randomUUID().toString());
+            if(i==4){
+                event.setTraceId("error_sim");
+                event.setEventTime(1000000000);
+            }
             if(random.nextBoolean()) {
                 event.setEventTime(dateTime.plusSeconds(delta).toEpochSecond() * 1000);
             }else{
@@ -110,7 +114,7 @@ public class MainAppTest {
 
             var outputTopic = testDriver.createOutputTopic(config.sinkTopic(), Serdes.String().deserializer(), enrichedTrackingEventGsonSerde.deserializer());
 
-            testDriver.advanceWallClockTime(Duration.of(3, ChronoUnit.HOURS));
+
 
             waitCompletion(testDriver);
 
@@ -125,13 +129,14 @@ public class MainAppTest {
 
     private void waitCompletion(TopologyTestDriver testDriver) {
         try {
-            for(int i=0; i<events.size(); i++){
-                logger.infof("waiting event %s",i);
-                boolean b = executor.awaitTermination(100, TimeUnit.MILLISECONDS);
-                testDriver.advanceWallClockTime(Duration.of(3, ChronoUnit.HOURS));
-                logger.infof("Done waiting event %s: timed out: %s",i,!b);
+            Duration advance = Duration.of(60_001, ChronoUnit.SECONDS);
+            testDriver.advanceWallClockTime(advance);
+            for(int i=0; i<events.size()+config.maxAttempts(); i++){
+                logger.debugf("waiting event %s",i);
+                boolean b = executor.awaitTermination(50, TimeUnit.MILLISECONDS);
+                testDriver.advanceWallClockTime(advance);
+                logger.debugf("Done waiting event %s: timed out: %s",i,(!b)+"");
             }
-
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

@@ -6,6 +6,7 @@ public class AlertCacheValue implements Serializable {
     private String level; // NONE, LOW, MEDIUM, CRITICAL
     private boolean errorFlag;
     private String details;
+    private int attempts;
 
     public long getUpdatedAt() {
         return updatedAt;
@@ -48,5 +49,13 @@ public class AlertCacheValue implements Serializable {
         a.details = error;
         a.updatedAt = System.currentTimeMillis();
         return a;
+    }
+
+    public int getAttempts() {
+        return attempts;
+    }
+
+    public void setAttempts(int attempts) {
+        this.attempts = attempts;
     }
 }

@@ -6,6 +6,7 @@ public class RouteCacheValue implements Serializable {
     private String routeId;
     private String routeJson; // ou campos ricos
     private long updatedAt;
+    private int attempts;
 
     public static RouteCacheValue defaultEmptyWithError(String error) {
         RouteCacheValue v = new RouteCacheValue();
@@ -37,5 +38,13 @@ public class RouteCacheValue implements Serializable {
 
     public void setUpdatedAt(long updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public int getAttempts() {
+        return attempts;
+    }
+
+    public void setAttempts(int attempts) {
+        this.attempts = attempts;
     }
 }

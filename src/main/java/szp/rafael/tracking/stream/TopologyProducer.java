@@ -24,6 +24,8 @@ import szp.rafael.tracking.stream.processors.EnrichmentCoordinatorProcessor;
 import szp.rafael.tracking.stream.processors.OutputFormatterProcessor;
 import szp.rafael.tracking.stream.serializers.GsonSerde;
 
+import java.time.Duration;
+
 @ApplicationScoped
 public class TopologyProducer {
 
@@ -51,7 +53,13 @@ public class TopologyProducer {
         topology.addSource(vehicleTrackingEvents, Serdes.String().deserializer(), teSerde.deserializer(), config.sourceTopic());
 
         String enrichmentProcessor = "Enrichment Processor";
-        topology.addProcessor(enrichmentProcessor, () -> new EnrichmentCoordinatorProcessor(executor), vehicleTrackingEvents);
+        topology.addProcessor(enrichmentProcessor, () ->
+                new EnrichmentCoordinatorProcessor(executor,
+                        config.maxAttempts(),
+                        config.backoffMs(),
+                        Duration.ofMillis(config.httpTimeoutMs()),
+                        Duration.ofMillis(config.puntuateIntervalMs())),
+                        vehicleTrackingEvents);
 
         topology.addStateStore(getRouteCacheStore(routeCacheValueGsonSerde),enrichmentProcessor);
         topology.addStateStore(getAlertCacheStore(alertCacheValueGsonSerde),enrichmentProcessor);

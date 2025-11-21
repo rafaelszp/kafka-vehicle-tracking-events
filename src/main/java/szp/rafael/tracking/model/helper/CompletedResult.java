@@ -11,25 +11,27 @@ public class  CompletedResult {
     final RouteCacheValue routeValue;
     final AlertCacheValue alertValue;
     final String errorMessage;
+    int attempts=0;
 
     private CompletedResult(String pendingKey, PendingEntry.Stage stage, boolean success,
-                            RouteCacheValue routeValue, AlertCacheValue alertValue, String errorMessage) {
+                            RouteCacheValue routeValue, AlertCacheValue alertValue, String errorMessage,int attempts) {
         this.pendingKey = pendingKey;
         this.stage = stage;
         this.success = success;
         this.routeValue = routeValue;
         this.alertValue = alertValue;
         this.errorMessage = errorMessage;
+        this.attempts = attempts;
     }
 
-    public static CompletedResult forRoute(String pendingKey, boolean success, RouteCacheValue routeValue, String error) {
-        return new CompletedResult(pendingKey, PendingEntry.Stage.ROUTE_ENRICH, success, routeValue, null, error);
+    public static CompletedResult forRoute(String pendingKey, boolean success, RouteCacheValue routeValue, String error,int attempts) {
+        return new CompletedResult(pendingKey, PendingEntry.Stage.ROUTE_ENRICH, success, routeValue, null, error,attempts);
     }
-    public static CompletedResult forAlert(String pendingKey, boolean success, AlertCacheValue alertValue, String error) {
-        return new CompletedResult(pendingKey, PendingEntry.Stage.ALERT_ENRICH, success, null, alertValue, error);
+    public static CompletedResult forAlert(String pendingKey, boolean success, AlertCacheValue alertValue, String error,int attempts) {
+        return new CompletedResult(pendingKey, PendingEntry.Stage.ALERT_ENRICH, success, null, alertValue, error,attempts);
     }
-    public static CompletedResult forFailure(String pendingKey, PendingEntry.Stage stage, String error) {
-        return new CompletedResult(pendingKey, stage, false, null, null, error);
+    public static CompletedResult forFailure(String pendingKey, PendingEntry.Stage stage, String error,int attempts) {
+        return new CompletedResult(pendingKey, stage, false, null, null, error,attempts);
     }
 
     public String getPendingKey() {
