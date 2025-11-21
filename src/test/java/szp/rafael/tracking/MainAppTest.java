@@ -1,25 +1,34 @@
 package szp.rafael.tracking;
 
+import com.github.f4b6a3.ulid.UlidCreator;
 import io.quarkus.test.junit.QuarkusTest;
+import io.smallrye.context.api.NamedInstance;
 import jakarta.inject.Inject;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.TestInputTopic;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.TopologyTestDriver;
+import org.eclipse.microprofile.context.ManagedExecutor;
 import org.jboss.logging.Logger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import szp.rafael.tracking.helpers.AppKafkaConfig;
+import szp.rafael.tracking.model.tracking.EnrichedTrackingEvent;
 import szp.rafael.tracking.model.tracking.TrackingEvent;
 import szp.rafael.tracking.stream.TopologyProducer;
 import szp.rafael.tracking.stream.serializers.GsonSerde;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 @QuarkusTest
 public class MainAppTest {
@@ -35,8 +44,17 @@ public class MainAppTest {
     AppKafkaConfig config;
 
     @Inject
+    @NamedInstance("topologyExecutor")
+    ManagedExecutor executor;
+
+    ThreadLocalRandom random = ThreadLocalRandom.current();
+
+
+    @Inject
     Topology topology;
 
+    GsonSerde<EnrichedTrackingEvent> enrichedTrackingEventGsonSerde = new GsonSerde<>(EnrichedTrackingEvent.class);
+    GsonSerde<TrackingEvent> teSerde = TopologyProducer.getTrackingEventSerde();
 
     @BeforeEach
     public void setup(){
@@ -47,20 +65,26 @@ public class MainAppTest {
         streamProps.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         streamProps.put(StreamsConfig.STATE_DIR_CONFIG, "/tmp/kafka-streams-"+this.getClass().getPackageName()+"-"+this.getClass().getSimpleName()+"/"+UUID.randomUUID());
 
-        events = getEvents();
+        events = getOutOfOrderEvents();
 
     }
 
 
-    public List<TrackingEvent> getEvents() {
+    public List<TrackingEvent> getOutOfOrderEvents() {
         List<TrackingEvent> events = this.events;
 
         for (int i = 0; i < 5; i++) {
 
-            OffsetDateTime  dateTime = OffsetDateTime.of(2025, 10, 10, 0, 0, 0, 0, OffsetDateTime.now().getOffset());
+            int delta = random.nextInt(0,10*(i+1));
+            OffsetDateTime  dateTime = OffsetDateTime.of(1970, 1, 1, 1, 0, 0, 0, ZoneOffset.UTC);
             TrackingEvent event = new TrackingEvent();
+            event.setEventId(UlidCreator.getMonotonicUlid().toLowerCase());
             event.setTraceId(UUID.randomUUID().toString());
-            event.setEventTime(dateTime.plusSeconds(i*10).toEpochSecond()*1000);
+            if(random.nextBoolean()) {
+                event.setEventTime(dateTime.plusSeconds(delta).toEpochSecond() * 1000);
+            }else{
+                event.setEventTime(dateTime.minusSeconds(delta).toEpochSecond() * 1000);
+            }
             event.setPlaca("AAA1111");
             events.add(event);
         }
@@ -73,7 +97,7 @@ public class MainAppTest {
 
         logger.info(topology.describe());
 
-        GsonSerde<TrackingEvent> teSerde = TopologyProducer.getTrackingEventSerde();
+
 
         try (final TopologyTestDriver testDriver = new TopologyTestDriver(topology, streamProps)) {
 
@@ -81,10 +105,35 @@ public class MainAppTest {
                     Serdes.String().serializer(), teSerde.serializer());
 
             for (TrackingEvent event : events) {
-                inputTopic.pipeInput(event.getTraceId(), event);
+                inputTopic.pipeInput(event.getPlaca(), event,event.getEventTime());
             }
 
+            var outputTopic = testDriver.createOutputTopic(config.sinkTopic(), Serdes.String().deserializer(), enrichedTrackingEventGsonSerde.deserializer());
 
+            testDriver.advanceWallClockTime(Duration.of(3, ChronoUnit.HOURS));
+
+            waitCompletion(testDriver);
+
+            List<EnrichedTrackingEvent> enrichedList = outputTopic.readValuesToList();
+
+            logger.info("Enriched events: "+enrichedList.size());
+            enrichedList.forEach(e -> logger.info(e.toJSONString()));
+
+
+        }
+    }
+
+    private void waitCompletion(TopologyTestDriver testDriver) {
+        try {
+            for(int i=0; i<events.size(); i++){
+                logger.infof("waiting event %s",i);
+                boolean b = executor.awaitTermination(100, TimeUnit.MILLISECONDS);
+                testDriver.advanceWallClockTime(Duration.of(3, ChronoUnit.HOURS));
+                logger.infof("Done waiting event %s: timed out: %s",i,!b);
+            }
+
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
     }
 

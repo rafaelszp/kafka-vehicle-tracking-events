@@ -1,8 +1,10 @@
 package szp.rafael.tracking.model.tracking;
 
+import szp.rafael.tracking.model.AbstractModel;
+
 import java.io.Serializable;
 
-public class Geolocation implements Serializable{
+public class Geolocation  extends AbstractModel  implements Serializable{
 
     private double latitude;
     private double longitude;

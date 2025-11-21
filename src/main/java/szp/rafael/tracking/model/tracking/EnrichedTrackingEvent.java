@@ -1,11 +1,12 @@
 package szp.rafael.tracking.model.tracking;
 
+import szp.rafael.tracking.model.AbstractModel;
 import szp.rafael.tracking.model.store.AlertCacheValue;
 import szp.rafael.tracking.model.store.RouteCacheValue;
 
 import java.io.Serializable;
 
-public class EnrichedTrackingEvent implements Serializable {
+public class EnrichedTrackingEvent extends AbstractModel implements Serializable {
     private TrackingEvent original;
     private RouteCacheValue route;
     private AlertCacheValue alert;

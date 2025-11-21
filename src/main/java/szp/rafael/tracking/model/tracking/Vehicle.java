@@ -1,8 +1,10 @@
 package szp.rafael.tracking.model.tracking;
 
+import szp.rafael.tracking.model.AbstractModel;
+
 import java.io.Serializable;
 
-public class Vehicle implements Serializable {
+public class Vehicle  extends AbstractModel implements Serializable {
 
     private String model;
     private String brand;

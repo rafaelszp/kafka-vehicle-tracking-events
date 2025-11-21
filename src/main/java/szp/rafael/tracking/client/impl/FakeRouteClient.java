@@ -22,6 +22,14 @@ public class FakeRouteClient implements RouteEnrichmentClient {
         v.setRouteJson("{\"path\":\"F->T\"}");
         v.setUpdatedAt(System.currentTimeMillis()+plus);
 
+        simulateDelay();
+
         return new ApiResponse<>(true, v, null);
+    }
+
+    public void simulateDelay(){
+        try{
+            Thread.sleep(random.nextLong(10,80));
+        } catch (Exception e){}
     }
 }

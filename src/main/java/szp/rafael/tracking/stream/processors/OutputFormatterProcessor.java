@@ -22,10 +22,17 @@ public class OutputFormatterProcessor implements Processor<String, EnrichedTrack
 
     private static final Logger log = Logger.getLogger(OutputFormatterProcessor.class.getName());
 
+    private ProcessorContext<String, EnrichedTrackingEvent> context;
+
+
+    @Override
+    public void init(ProcessorContext<String, EnrichedTrackingEvent> context) {
+        this.context = context;
+    }
 
     @Override
     public void process(Record<String, EnrichedTrackingEvent> record) {
-
+        context.forward(record.withValue(record.value()));
     }
 }
 

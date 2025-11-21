@@ -1,14 +1,34 @@
 package szp.rafael.tracking.model.tracking;
 
+import szp.rafael.tracking.model.AbstractModel;
+
 import java.io.Serializable;
 
-public class TrackingEvent implements Serializable {
+public class TrackingEvent  extends AbstractModel implements Serializable {
+
+    public String eventId;
     private String placa;
     private long eventTime;
     private String traceId;
     private Vehicle vehicle;
     // campos de geolocalização, clientId, vehicle object etc.
 
+
+    public String getEventId() {
+        return eventId;
+    }
+
+    public void setEventId(String eventId) {
+        this.eventId = eventId;
+    }
+
+    public Vehicle getVehicle() {
+        return vehicle;
+    }
+
+    public void setVehicle(Vehicle vehicle) {
+        this.vehicle = vehicle;
+    }
 
     public String getPlaca() {
         return placa;

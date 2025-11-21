@@ -20,4 +20,7 @@ public interface AppKafkaConfig {
 
     @WithName("order_buffer_store")
     String orderBufferStore();
+
+    @WithName("sink_topic")
+    String sinkTopic();
 }
