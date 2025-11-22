@@ -21,6 +21,12 @@ public interface AppKafkaConfig {
     @WithName("order_buffer_store")
     String orderBufferStore();
 
+    @WithName("enriched_buffer_store")
+    String enrichedBufferStore();
+
+    @WithName("watermark_store")
+    String watermarkStore();
+
     @WithName("sink_topic")
     String sinkTopic();
 

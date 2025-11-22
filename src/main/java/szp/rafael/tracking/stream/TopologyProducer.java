@@ -7,12 +7,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.StoreBuilder;
 import org.apache.kafka.streams.state.Stores;
 import org.eclipse.microprofile.context.ManagedExecutor;
-import org.eclipse.microprofile.context.ThreadContext;
 import org.jetbrains.annotations.NotNull;
 import szp.rafael.tracking.helpers.AppKafkaConfig;
 import szp.rafael.tracking.model.store.AlertCacheValue;
@@ -21,7 +21,7 @@ import szp.rafael.tracking.model.store.RouteCacheValue;
 import szp.rafael.tracking.model.tracking.EnrichedTrackingEvent;
 import szp.rafael.tracking.model.tracking.TrackingEvent;
 import szp.rafael.tracking.stream.processors.EnrichmentCoordinatorProcessor;
-import szp.rafael.tracking.stream.processors.OutputFormatterProcessor;
+import szp.rafael.tracking.stream.processors.SortEnrichedEventsProcessor;
 import szp.rafael.tracking.stream.serializers.GsonSerde;
 
 import java.time.Duration;
@@ -64,10 +64,13 @@ public class TopologyProducer {
         topology.addStateStore(getRouteCacheStore(routeCacheValueGsonSerde),enrichmentProcessor);
         topology.addStateStore(getAlertCacheStore(alertCacheValueGsonSerde),enrichmentProcessor);
         topology.addStateStore(getPendingRequestsStore(pendingRequestsCacheValueGsonSerde),enrichmentProcessor);
-        topology.addStateStore(getOrderBufferStore(enrichedTrackingEventGsonSerde),enrichmentProcessor);
+        topology.addStateStore(getEnrichedBufferStore(enrichedTrackingEventGsonSerde),enrichmentProcessor);
 
         var outputFormatterProcessor = "Output formatter";
-        topology.addProcessor(outputFormatterProcessor, () -> new OutputFormatterProcessor(), enrichmentProcessor);
+        topology.addProcessor(outputFormatterProcessor, () -> new SortEnrichedEventsProcessor(config.orderBufferStore(),config.watermarkStore()), enrichmentProcessor);
+
+        topology.addStateStore(getOrderBufferStore(enrichedTrackingEventGsonSerde),outputFormatterProcessor);
+        topology.addStateStore(getWatermarkStore(),outputFormatterProcessor);
 
 
         topology.addSink("Enriched Tracking events",config.sinkTopic(),Serdes.String().serializer(),enrichedTrackingEventGsonSerde.serializer(),outputFormatterProcessor);
@@ -101,11 +104,27 @@ public class TopologyProducer {
         );
     }
 
-    private @NotNull StoreBuilder<KeyValueStore<String, EnrichedTrackingEvent>> getOrderBufferStore(GsonSerde<EnrichedTrackingEvent> enrichedTrackingEventGsonSerde) {
+    private @NotNull StoreBuilder<KeyValueStore<String, EnrichedTrackingEvent>> getEnrichedBufferStore(GsonSerde<EnrichedTrackingEvent> enrichedTrackingEventGsonSerde) {
         return Stores.keyValueStoreBuilder(
-                Stores.persistentKeyValueStore(config.orderBufferStore()),
+                Stores.persistentKeyValueStore(config.enrichedBufferStore()),
                 Serdes.String(),
                 enrichedTrackingEventGsonSerde
+        );
+    }
+
+    private @NotNull StoreBuilder<KeyValueStore<Bytes, EnrichedTrackingEvent>> getOrderBufferStore(GsonSerde<EnrichedTrackingEvent> enrichedTrackingEventGsonSerde) {
+        return Stores.keyValueStoreBuilder(
+                Stores.persistentKeyValueStore(config.orderBufferStore()),
+                Serdes.Bytes(),
+                enrichedTrackingEventGsonSerde
+        );
+    }
+
+    private @NotNull StoreBuilder<KeyValueStore<String, Long>> getWatermarkStore() {
+        return Stores.keyValueStoreBuilder(
+                Stores.persistentKeyValueStore(config.watermarkStore()),
+                Serdes.String(),
+                Serdes.Long()
         );
     }
 

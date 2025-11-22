@@ -77,19 +77,20 @@ public class MainAppTest {
 
         for (int i = 0; i < 5; i++) {
 
-            int delta = random.nextInt(0,10*(i+1));
+            int delta = Math.min(random.nextInt(0,10*(i+1)),30);
             OffsetDateTime  dateTime = OffsetDateTime.of(1970, 1, 1, 1, 0, 0, 0, ZoneOffset.UTC);
             TrackingEvent event = new TrackingEvent();
             event.setEventId(UlidCreator.getMonotonicUlid().toLowerCase());
             event.setTraceId(UUID.randomUUID().toString());
-            if(i==4){
-                event.setTraceId(FakeAlertClient.SIM_ALERT_VALUE);
-                event.setEventTime(1000000000);
-            }
+
             if(random.nextBoolean()) {
                 event.setEventTime(dateTime.plusSeconds(delta).toEpochSecond() * 1000);
             }else{
                 event.setEventTime(dateTime.minusSeconds(delta).toEpochSecond() * 1000);
+            }
+            if(i==4){
+                event.setTraceId(FakeAlertClient.SIM_ALERT_VALUE);
+                event.setEventTime(dateTime.toEpochSecond()*1000);
             }
             event.setPlaca("AAA1111");
             events.add(event);
@@ -103,37 +104,33 @@ public class MainAppTest {
 
         logger.info(topology.describe());
 
-
-
         try (final TopologyTestDriver testDriver = new TopologyTestDriver(topology, streamProps)) {
 
             TestInputTopic<String, TrackingEvent> inputTopic = testDriver.createInputTopic(config.sourceTopic(),
                     Serdes.String().serializer(), teSerde.serializer());
 
             for (TrackingEvent event : events) {
-                inputTopic.pipeInput(event.getPlaca(), event,event.getEventTime());
+                inputTopic.pipeInput(event.getPlaca(), event);
             }
 
             var outputTopic = testDriver.createOutputTopic(config.sinkTopic(), Serdes.String().deserializer(), enrichedTrackingEventGsonSerde.deserializer());
 
-
-
             waitCompletion(testDriver);
+
+            long advanceBy = Duration.ofMinutes(6).toMillis();
+            testDriver.advanceWallClockTime(Duration.ofMillis(advanceBy));
 
             List<EnrichedTrackingEvent> enrichedList = outputTopic.readValuesToList();
 
             logger.info("Enriched events: "+enrichedList.size());
-            enrichedList.forEach(e -> logger.debug(e.toJSONString()));
-
-
-
+            enrichedList.forEach(e -> logger.info(e.toJSONString()));
 
         }
     }
 
     private void waitCompletion(TopologyTestDriver testDriver) {
         try {
-            Duration advance = Duration.of(60_001, ChronoUnit.SECONDS);
+            Duration advance = Duration.of(60_001, ChronoUnit.MILLIS);
             testDriver.advanceWallClockTime(advance);
             for(int i=0; i<events.size()+1; i++){
                 logger.debugf("waiting event %s",i);

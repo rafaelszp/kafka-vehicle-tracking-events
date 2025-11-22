@@ -15,7 +15,7 @@ public class FakeAlertClient implements AlertEnrichmentClient {
 
     Logger logger  = Logger.getLogger(FakeAlertClient.class.getName());
 
-    public static final String SIM_ALERT_VALUE= "01kam6q9n1cq6axaz2htnqgwfa";
+    public static final String SIM_ALERT_VALUE= "00000";
     public static ConcurrentHashMap<String,Integer> errorMap = new ConcurrentHashMap<>();
 
     public enum Level {

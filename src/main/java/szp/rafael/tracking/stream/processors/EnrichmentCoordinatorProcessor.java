@@ -46,7 +46,7 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
     private KeyValueStore<String, RouteCacheValue> routeCacheStore;
     private KeyValueStore<String, AlertCacheValue> alertCacheStore;
     private KeyValueStore<String, PendingEntry> pendingStore;
-    private KeyValueStore<String, EnrichedTrackingEvent> orderBufferStore;
+    private KeyValueStore<String, EnrichedTrackingEvent> enrichedBufferStore;
 
     // clients
     private final RouteEnrichmentClient routeClient;
@@ -90,7 +90,7 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
         this.routeCacheStore = context.getStateStore(getStateStoreName("route_cache_store"));
         this.alertCacheStore = context.getStateStore(getStateStoreName("alert_cache_store"));
         this.pendingStore = context.getStateStore(getStateStoreName("pending_requests_store"));
-        this.orderBufferStore = context.getStateStore(getStateStoreName("order_buffer_store"));
+        this.enrichedBufferStore = context.getStateStore(getStateStoreName("enriched_buffer_store"));
 
         // schedule punctuator
         this.context.schedule(punctuateInterval, PunctuationType.WALL_CLOCK_TIME, this::punctuate);
@@ -164,12 +164,12 @@ public class EnrichmentCoordinatorProcessor implements Processor<String, Trackin
 
     //‘Buffer’ de ordenação por timestamp
     private void forwardAfterEnrich(String placa, EnrichedTrackingEvent enriched) {
-        EnrichedTrackingEvent previousEnrichment = orderBufferStore.get(placa);
+        EnrichedTrackingEvent previousEnrichment = enrichedBufferStore.get(placa);
         if (previousEnrichment != null) return; // ja foi enviado, naos precisa enviar outra vez
-        orderBufferStore.put(placa, enriched);
+        enrichedBufferStore.put(placa, enriched);
         Record<String, EnrichedTrackingEvent> record = new Record<>(placa, enriched, enriched.getProcessedAtMillis());
         context.forward(record);
-        orderBufferStore.delete(placa);
+        enrichedBufferStore.delete(placa);
     }
 
 

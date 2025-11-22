@@ -1,14 +1,11 @@
 package szp.rafael.tracking.model.store;
 
 import szp.rafael.tracking.model.tracking.EnrichedTrackingEvent;
-import szp.rafael.tracking.stream.processors.OutputFormatterProcessor;
 
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.NavigableSet;
 import java.util.TreeSet;
 
